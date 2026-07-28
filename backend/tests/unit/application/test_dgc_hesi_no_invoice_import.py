@@ -150,7 +150,5 @@ def _invoice(amount: str) -> dict[str, object]:
     return {
         "company_code": "3000",
         "code": "C-1",
-        "feetypeid": "TYPE-F1000",
-        "amount_standard_dec": "100",
         "approve_amount_dec": amount,
     }

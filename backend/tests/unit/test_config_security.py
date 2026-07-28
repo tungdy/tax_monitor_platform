@@ -286,8 +286,6 @@ def test_dgc_sap_profit_defaults_are_disabled_and_safe() -> None:
     assert settings.dgc_hesi_invoice_field_map == {
         "company_code": "company_code",
         "expense_claim_code": "code",
-        "expense_type_id": "feetypeid",
-        "expense_line_amount": "amount_standard_dec",
         "invoice_approved_amount": "approve_amount_dec",
     }
     assert settings.dgc_hesi_application_enabled is False
@@ -729,8 +727,6 @@ def test_dgc_field_map_rejects_invalid_contracts(
             {
                 "company_code": "same",
                 "expense_claim_code": "same",
-                "expense_type_id": "feetypeid",
-                "expense_line_amount": "amount_standard_dec",
                 "invoice_approved_amount": "invoice_approved_amount",
             },
         ),

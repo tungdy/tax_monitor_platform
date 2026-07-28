@@ -31,8 +31,6 @@ _DGC_HESI_REIMBURSEMENT_FIELD_NAMES = (
 _DGC_HESI_INVOICE_FIELD_NAMES = (
     "company_code",
     "expense_claim_code",
-    "expense_type_id",
-    "expense_line_amount",
     "invoice_approved_amount",
 )
 
@@ -84,8 +82,6 @@ def _default_dgc_hesi_invoice_field_map() -> dict[str, str]:
     return {
         "company_code": "company_code",
         "expense_claim_code": "code",
-        "expense_type_id": "feetypeid",
-        "expense_line_amount": "amount_standard_dec",
         "invoice_approved_amount": "approve_amount_dec",
     }
 

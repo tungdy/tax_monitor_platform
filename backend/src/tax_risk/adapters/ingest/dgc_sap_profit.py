@@ -329,11 +329,12 @@ class DgcSapProfitClient:
         page_checksums: set[str] = set()
         offset = 0
         total_response_bytes = 0
+        effective_page_size = self._config.page_size
         for _page_number in range(1, self._config.max_pages + 1):
             body = dict(parameters)
             body["limitValue"] = self._config.page_size
             body["offsetValue"] = offset
-            page, response_bytes = self._fetch_page(body)
+            page, response_bytes, total_size, row_size = self._fetch_page(body)
             total_response_bytes += response_bytes
             if total_response_bytes > self._config.max_total_bytes:
                 raise DgcResourceLimitError("DGC result exceeded the configured total byte limit")
@@ -349,13 +350,29 @@ class DgcSapProfitClient:
             if page:
                 page_checksums.add(page_checksum)
             records.extend(page)
-            if len(page) < self._config.page_size:
+            if total_size is not None and len(records) >= total_size:
                 frozen_records = tuple(records)
                 return DgcFetchResult(
                     records=frozen_records,
                     checksum=_checksum(frozen_records),
                 )
-            offset += self._config.page_size
+            if row_size is None:
+                if len(page) < self._config.page_size:
+                    frozen_records = tuple(records)
+                    return DgcFetchResult(
+                        records=frozen_records,
+                        checksum=_checksum(frozen_records),
+                    )
+                offset += self._config.page_size
+                continue
+            if not page or (offset > 0 and len(page) < effective_page_size):
+                frozen_records = tuple(records)
+                return DgcFetchResult(
+                    records=frozen_records,
+                    checksum=_checksum(frozen_records),
+                )
+            effective_page_size = min(effective_page_size, len(page))
+            offset += len(page)
 
         raise DgcPaginationError(
             f"DGC pagination exceeded the configured maximum of {self._config.max_pages} pages"
@@ -364,7 +381,7 @@ class DgcSapProfitClient:
     def _fetch_page(
         self,
         body: Mapping[str, object],
-    ) -> tuple[tuple[Mapping[str, object], ...], int]:
+    ) -> tuple[tuple[Mapping[str, object], ...], int, int | None, int | None]:
         response_bytes = 0
         attempts = 1 if self._config.app_key is not None else 2
         for attempt in range(attempts):
@@ -394,7 +411,8 @@ class DgcSapProfitClient:
                 raise DgcApiError(dlm_code)
             if dlm_code is not None and dlm_code != "DLM.0":
                 raise DgcApiError(dlm_code)
-            return _extract_records(payload), response_bytes
+            total_size, row_size = _extract_pagination_metadata(payload)
+            return _extract_records(payload), response_bytes, total_size, row_size
 
         raise AssertionError("DGC token retry loop exhausted unexpectedly")
 
@@ -974,6 +992,34 @@ def _extract_dlm_code(payload: object) -> str | None:
     if len(set(codes)) > 1:
         raise DgcSchemaError("DGC response contains conflicting status codes")
     return codes[0] if codes else None
+
+
+def _extract_pagination_metadata(payload: object) -> tuple[int | None, int | None]:
+    if not isinstance(payload, Mapping):
+        return None, None
+    data = payload.get("data")
+    if not isinstance(data, Mapping):
+        return None, None
+    return (
+        _optional_nonnegative_int(data.get("totalSize"), "totalSize"),
+        _optional_nonnegative_int(data.get("rowSize"), "rowSize"),
+    )
+
+
+def _optional_nonnegative_int(value: object, field: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise DgcSchemaError(f"DGC response {field} must be a non-negative integer")
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.strip().isascii() and value.strip().isdecimal():
+        parsed = int(value.strip())
+    else:
+        raise DgcSchemaError(f"DGC response {field} must be a non-negative integer")
+    if parsed < 0:
+        raise DgcSchemaError(f"DGC response {field} must be a non-negative integer")
+    return parsed
 
 
 def _extract_records(payload: object) -> tuple[Mapping[str, object], ...]:

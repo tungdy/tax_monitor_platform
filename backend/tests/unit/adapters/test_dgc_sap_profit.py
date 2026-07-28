@@ -306,6 +306,46 @@ def test_client_authenticates_paginates_and_preserves_json_decimal_precision() -
     assert len(result.checksum) == 64
 
 
+def test_client_continues_when_service_clamps_page_below_requested_limit() -> None:
+    api_bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == IAM_URL:
+            return _iam_response("token")
+        body = json.loads(request.content)
+        assert isinstance(body, dict)
+        api_bodies.append(body)
+        offset = body["offsetValue"]
+        rows = [{"id": 5}]
+        if offset == 0:
+            rows = [{"id": 1}, {"id": 2}]
+        elif offset == 2:
+            rows = [{"id": 3}, {"id": 4}]
+        return httpx.Response(
+            200,
+            json={
+                "errCode": "DLM.0",
+                "data": {
+                    "rowSize": len(rows),
+                    "columnSize": 1,
+                    "success": True,
+                    "data": rows,
+                    "columnNames": ["id"],
+                },
+            },
+        )
+
+    client = DgcSapProfitClient(
+        _config(page_size=5),
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    result = client.fetch({})
+
+    assert [body["offsetValue"] for body in api_bodies] == [0, 2, 4]
+    assert tuple(record["id"] for record in result.records) == (1, 2, 3, 4, 5)
+
+
 def test_client_caches_token_until_monotonic_ttl_expires() -> None:
     now = [100.0]
     token_calls = 0
