@@ -111,7 +111,7 @@ def test_hesi_invoice_tiered_config_uses_independent_settings() -> None:
         dgc_hesi_invoice_api_url="https://dgc.example.test/hesi-invoice",
         dgc_hesi_invoice_app_key=SecretStr("hesi-invoice-key"),
         dgc_hesi_invoice_app_secret=SecretStr("hesi-invoice-secret"),
-        dgc_hesi_invoice_page_size=876,
+        dgc_hesi_invoice_page_size=100,
     )
 
     config = tiered_config(settings, DgcInterface.HESI_INVOICE)
@@ -120,7 +120,7 @@ def test_hesi_invoice_tiered_config_uses_independent_settings() -> None:
     assert config.api_url == "https://dgc.example.test/hesi-invoice"
     assert config.app_key == "hesi-invoice-key"
     assert config.app_secret == "hesi-invoice-secret"
-    assert config.page_size == 876
+    assert config.page_size == 100
 
 
 def test_tiered_config_repr_does_not_disclose_credentials() -> None:

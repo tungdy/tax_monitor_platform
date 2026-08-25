@@ -31,6 +31,9 @@ _DGC_HESI_REIMBURSEMENT_FIELD_NAMES = (
 _DGC_HESI_INVOICE_FIELD_NAMES = (
     "company_code",
     "expense_claim_code",
+    "invoice_id",
+    "expense_type_id",
+    "expense_line_amount",
     "invoice_approved_amount",
 )
 
@@ -82,6 +85,9 @@ def _default_dgc_hesi_invoice_field_map() -> dict[str, str]:
     return {
         "company_code": "company_code",
         "expense_claim_code": "code",
+        "invoice_id": "invoice_id",
+        "expense_type_id": "feetypeid",
+        "expense_line_amount": "amount_standard_dec",
         "invoice_approved_amount": "approve_amount_dec",
     }
 
@@ -256,7 +262,7 @@ class Settings(BaseSettings):
     dgc_hesi_reimbursement_api_url: str | None = "https://116.63.221.181/post/hesimingxi"
     dgc_hesi_reimbursement_app_key: SecretStr | None = None
     dgc_hesi_reimbursement_app_secret: SecretStr | None = None
-    dgc_hesi_reimbursement_page_size: int = Field(default=5_000, gt=0, le=50_000)
+    dgc_hesi_reimbursement_page_size: int = Field(default=100, gt=0, le=100)
     dgc_hesi_reimbursement_field_map: dict[str, str] = Field(
         default_factory=_default_dgc_hesi_reimbursement_field_map
     )
@@ -264,7 +270,7 @@ class Settings(BaseSettings):
     dgc_hesi_invoice_api_url: str | None = "https://116.63.221.181/post/hesiinvoice"
     dgc_hesi_invoice_app_key: SecretStr | None = None
     dgc_hesi_invoice_app_secret: SecretStr | None = None
-    dgc_hesi_invoice_page_size: int = Field(default=15_000, gt=0, le=50_000)
+    dgc_hesi_invoice_page_size: int = Field(default=100, gt=0, le=100)
     dgc_hesi_invoice_field_map: dict[str, str] = Field(
         default_factory=_default_dgc_hesi_invoice_field_map
     )

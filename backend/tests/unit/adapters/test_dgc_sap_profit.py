@@ -226,6 +226,89 @@ def test_app_secret_get_mode_signs_paginated_query_without_a_request_body() -> N
     )
 
 
+@pytest.mark.parametrize("request_method", ("GET", "POST"))
+def test_hesi_app_secret_modes_fetch_every_100_row_page(request_method: str) -> None:
+    offsets: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request_method == "GET":
+            offset = int(request.url.params["offsetValue"])
+            assert request.url.params["limitValue"] == "100"
+        else:
+            body = json.loads(request.content)
+            assert isinstance(body, dict)
+            offset = int(body["offsetValue"])
+            assert body["limitValue"] == 100
+        offsets.append(offset)
+        row_count = min(100, 250 - offset)
+        rows = [{"id": offset + index} for index in range(row_count)]
+        return httpx.Response(
+            200,
+            json={
+                "errCode": "DLM.0",
+                "data": {
+                    "totalSize": 250,
+                    "rowSize": row_count,
+                    "data": rows,
+                },
+            },
+        )
+
+    client = DgcSapProfitClient(
+        DgcClientConfig(
+            api_url="https://dgc.example.test/post/hesi",
+            request_method=request_method,
+            app_key="test-app-key",
+            app_secret="test-app-secret",
+            page_size=100,
+        ),
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    result = client.fetch({"company_code": "3KF0"})
+
+    assert offsets == [0, 100, 200]
+    assert len(result.records) == 250
+    assert result.records[-1]["id"] == 249
+
+
+def test_client_does_not_trust_an_undercounted_total_size() -> None:
+    api_bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert isinstance(body, dict)
+        api_bodies.append(body)
+        offset = body["offsetValue"]
+        if offset == 0:
+            rows = [{"id": 1}, {"id": 2}]
+        elif offset == 2:
+            rows = [{"id": 3}]
+        else:
+            rows = []
+        return httpx.Response(
+            200,
+            json={
+                "errCode": "DLM.0",
+                "data": {
+                    "totalSize": 1,
+                    "rowSize": len(rows),
+                    "data": rows,
+                },
+            },
+        )
+
+    client = DgcSapProfitClient(
+        _config(page_size=2),
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    result = client.fetch({})
+
+    assert [body["offsetValue"] for body in api_bodies] == [0, 2]
+    assert tuple(row["id"] for row in result.records) == (1, 2, 3)
+
+
 def test_get_mode_rejects_null_or_structured_query_parameters() -> None:
     client = DgcSapProfitClient(
         DgcClientConfig(

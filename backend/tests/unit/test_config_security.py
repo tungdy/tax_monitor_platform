@@ -270,7 +270,7 @@ def test_dgc_sap_profit_defaults_are_disabled_and_safe() -> None:
     assert settings.dgc_hesi_reimbursement_api_url == ("https://116.63.221.181/post/hesimingxi")
     assert settings.dgc_hesi_reimbursement_app_key is None
     assert settings.dgc_hesi_reimbursement_app_secret is None
-    assert settings.dgc_hesi_reimbursement_page_size == 5_000
+    assert settings.dgc_hesi_reimbursement_page_size == 100
     assert settings.dgc_hesi_reimbursement_field_map == {
         "company_code": "company_code",
         "approval_completed_at": "flow_end_date",
@@ -282,10 +282,13 @@ def test_dgc_sap_profit_defaults_are_disabled_and_safe() -> None:
     assert settings.dgc_hesi_invoice_api_url == "https://116.63.221.181/post/hesiinvoice"
     assert settings.dgc_hesi_invoice_app_key is None
     assert settings.dgc_hesi_invoice_app_secret is None
-    assert settings.dgc_hesi_invoice_page_size == 15_000
+    assert settings.dgc_hesi_invoice_page_size == 100
     assert settings.dgc_hesi_invoice_field_map == {
         "company_code": "company_code",
         "expense_claim_code": "code",
+        "invoice_id": "invoice_id",
+        "expense_type_id": "feetypeid",
+        "expense_line_amount": "amount_standard_dec",
         "invoice_approved_amount": "approve_amount_dec",
     }
     assert settings.dgc_hesi_application_enabled is False
@@ -727,6 +730,9 @@ def test_dgc_field_map_rejects_invalid_contracts(
             {
                 "company_code": "same",
                 "expense_claim_code": "same",
+                "invoice_id": "invoice_id",
+                "expense_type_id": "feetypeid",
+                "expense_line_amount": "amount_standard_dec",
                 "invoice_approved_amount": "invoice_approved_amount",
             },
         ),
@@ -796,9 +802,9 @@ def test_dgc_ledger_must_be_nonempty() -> None:
         ("dgc_sap_account_balance_page_size", 0),
         ("dgc_sap_account_balance_page_size", 50_001),
         ("dgc_hesi_reimbursement_page_size", 0),
-        ("dgc_hesi_reimbursement_page_size", 50_001),
+        ("dgc_hesi_reimbursement_page_size", 101),
         ("dgc_hesi_invoice_page_size", 0),
-        ("dgc_hesi_invoice_page_size", 50_001),
+        ("dgc_hesi_invoice_page_size", 101),
         ("dgc_hesi_application_page_size", 0),
         ("dgc_hesi_application_page_size", 50_001),
         ("dgc_sap_dividend_detail_page_size", 0),

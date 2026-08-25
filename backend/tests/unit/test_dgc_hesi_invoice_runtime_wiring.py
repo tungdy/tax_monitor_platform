@@ -34,7 +34,7 @@ def test_create_app_owns_and_closes_enabled_hesi_invoice_client(
         dgc_hesi_invoice_api_url="https://dgc.example.test/hesi-invoice",
         dgc_hesi_invoice_app_key="hesi-invoice-key",
         dgc_hesi_invoice_app_secret="hesi-invoice-secret",
-        dgc_hesi_invoice_page_size=876,
+        dgc_hesi_invoice_page_size=100,
         dgc_tls_server_name=None,
         dgc_tls_pinned_certificate_sha256=None,
     )
@@ -48,7 +48,7 @@ def test_create_app_owns_and_closes_enabled_hesi_invoice_client(
     assert owned.config.request_method == "GET"
     assert owned.config.app_key == "hesi-invoice-key"
     assert owned.config.app_secret == "hesi-invoice-secret"
-    assert owned.config.page_size == 876
+    assert owned.config.page_size == 100
     with TestClient(app):
         assert owned.closed is False
     assert owned.closed is True

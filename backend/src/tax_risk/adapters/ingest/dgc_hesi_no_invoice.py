@@ -77,6 +77,9 @@ class DgcHesiReimbursementFieldMap:
 class DgcHesiInvoiceFieldMap:
     company_code: str = "company_code"
     expense_claim_code: str = "code"
+    invoice_id: str = "invoice_id"
+    expense_type_id: str = "feetypeid"
+    expense_line_amount: str = "amount_standard_dec"
     invoice_approved_amount: str = "approve_amount_dec"
 
 
@@ -87,14 +90,34 @@ class DgcHesiReimbursementRecord:
     expense_claim_code: str
     expense_type_code: str
     expense_type_amount: Decimal
+    source_fingerprint: str
     source_row_number: int
 
 
 @dataclass(frozen=True, slots=True)
 class DgcHesiInvoiceRecord:
     company_code: str
+    approval_completed_on: date
     expense_claim_code: str
+    invoice_id: str
+    expense_type_id: str
+    expense_type_code: str
+    expense_type_candidates: tuple[str, ...]
+    excluded_expense_type: bool
+    expense_line_amount: Decimal
     invoice_approved_amount: Decimal
+    source_row_number: int
+
+
+@dataclass(frozen=True, slots=True)
+class _DgcHesiInvoiceSourceRecord:
+    company_code: str
+    expense_claim_code: str
+    invoice_id: str
+    expense_type_id: str
+    expense_line_amount: Decimal
+    invoice_approved_amount: Decimal
+    source_fingerprint: str
     source_row_number: int
 
 
@@ -108,6 +131,8 @@ class DgcHesiNoInvoiceResult:
     excluded_reimbursement_count: int
     excluded_invoice_count: int
     source_checksum: str
+    reimbursement_duplicate_count: int = 0
+    invoice_duplicate_count: int = 0
 
 
 class DgcHesiNoInvoiceAdapter:
@@ -141,13 +166,20 @@ class DgcHesiNoInvoiceAdapter:
         self._through_period = _quarter_end(through_period)
 
     def adapt(self) -> DgcHesiNoInvoiceResult:
-        reimbursements = tuple(
+        parsed_reimbursements = tuple(
             self._parse_reimbursement(raw, row_number)
             for row_number, raw in enumerate(self._reimbursement_result.records, start=1)
         )
-        invoices = tuple(
-            self._parse_invoice(raw, row_number)
+        reimbursements, reimbursement_duplicate_count = _deduplicate_reimbursements(
+            parsed_reimbursements
+        )
+        parsed_invoice_sources = tuple(
+            self._parse_invoice_source(raw, row_number)
             for row_number, raw in enumerate(self._invoice_result.records, start=1)
+        )
+        invoice_sources, invoice_duplicate_count = _deduplicate_invoice_sources(
+            parsed_invoice_sources,
+            field=self._invoice_field_map.invoice_id,
         )
         period_start = date(self._fiscal_year, 1, 1)
         period_end = date(
@@ -169,8 +201,35 @@ class DgcHesiNoInvoiceAdapter:
         included_claim_codes = frozenset(
             record.expense_claim_code for record in included_reimbursements
         )
+        reimbursements_by_claim: dict[str, list[DgcHesiReimbursementRecord]] = {}
+        for record in scoped_reimbursements:
+            if record.expense_claim_code in included_claim_codes:
+                reimbursements_by_claim.setdefault(record.expense_claim_code, []).append(record)
+        relevant_invoice_sources = tuple(
+            record
+            for record in invoice_sources
+            if record.expense_claim_code in included_claim_codes
+        )
+        expense_type_by_id = self._infer_invoice_expense_types(
+            relevant_invoice_sources,
+            reimbursements_by_claim,
+        )
+        scoped_invoices_list: list[DgcHesiInvoiceRecord] = []
+        for source_record in relevant_invoice_sources:
+            resolved = self._resolve_invoice(
+                source_record,
+                reimbursements_by_claim,
+                expense_type_by_id,
+                period_start,
+                period_end,
+            )
+            if resolved is not None:
+                scoped_invoices_list.append(resolved)
+        scoped_invoices = tuple(scoped_invoices_list)
         included_invoices = tuple(
-            record for record in invoices if record.expense_claim_code in included_claim_codes
+            record
+            for record in scoped_invoices
+            if not record.excluded_expense_type
         )
         reimbursement_total = _exact_sum(
             tuple(record.expense_type_amount for record in included_reimbursements)
@@ -178,8 +237,29 @@ class DgcHesiNoInvoiceAdapter:
         invoice_total = _exact_sum(
             tuple(record.invoice_approved_amount for record in included_invoices)
         )
-        difference = reimbursement_total - invoice_total
-        no_invoice_amount = difference if difference > 0 else Decimal(0)
+        reimbursement_totals_by_type: dict[tuple[str, str], Decimal] = {}
+        for record in included_reimbursements:
+            key = (record.expense_claim_code, record.expense_type_code)
+            reimbursement_totals_by_type[key] = (
+                reimbursement_totals_by_type.get(key, Decimal(0))
+                + record.expense_type_amount
+            )
+        invoice_totals_by_type: dict[tuple[str, str], Decimal] = {}
+        for invoice_record in included_invoices:
+            key = (invoice_record.expense_claim_code, invoice_record.expense_type_code)
+            invoice_totals_by_type[key] = (
+                invoice_totals_by_type.get(key, Decimal(0))
+                + invoice_record.invoice_approved_amount
+            )
+        no_invoice_amount = _exact_sum(
+            tuple(
+                max(
+                    reimbursement_amount - invoice_totals_by_type.get(key, Decimal(0)),
+                    Decimal(0),
+                )
+                for key, reimbursement_amount in reimbursement_totals_by_type.items()
+            )
+        )
         for field, amount in (
             ("reimbursement_expense_total", reimbursement_total),
             ("invoice_approved_total", invoice_total),
@@ -200,15 +280,17 @@ class DgcHesiNoInvoiceAdapter:
         )
         return DgcHesiNoInvoiceResult(
             reimbursement_records=scoped_reimbursements,
-            invoice_records=included_invoices,
+            invoice_records=scoped_invoices,
             reimbursement_expense_total=reimbursement_total,
             invoice_approved_total=invoice_total,
             hesi_no_invoice=no_invoice_amount,
             excluded_reimbursement_count=(
                 len(scoped_reimbursements) - len(included_reimbursements)
             ),
-            excluded_invoice_count=len(invoices) - len(included_invoices),
+            excluded_invoice_count=len(scoped_invoices) - len(included_invoices),
             source_checksum=source_checksum,
+            reimbursement_duplicate_count=reimbursement_duplicate_count,
+            invoice_duplicate_count=invoice_duplicate_count,
         )
 
     def _parse_reimbursement(
@@ -258,14 +340,15 @@ class DgcHesiNoInvoiceAdapter:
                 source,
                 row_number,
             ),
+            source_fingerprint=_record_fingerprint(raw),
             source_row_number=row_number,
         )
 
-    def _parse_invoice(
+    def _parse_invoice_source(
         self,
         raw: Mapping[str, object],
         row_number: int,
-    ) -> DgcHesiInvoiceRecord:
+    ) -> _DgcHesiInvoiceSourceRecord:
         source = "hesi_invoice"
         mapping = self._invoice_field_map
         _validate_mapped_fields(
@@ -273,6 +356,9 @@ class DgcHesiNoInvoiceAdapter:
             (
                 mapping.company_code,
                 mapping.expense_claim_code,
+                mapping.invoice_id,
+                mapping.expense_type_id,
+                mapping.expense_line_amount,
                 mapping.invoice_approved_amount,
             ),
             source,
@@ -280,11 +366,29 @@ class DgcHesiNoInvoiceAdapter:
         )
         company_code = _text(raw[mapping.company_code], mapping.company_code, source, row_number)
         _validate_company(company_code, self._company_code, source, row_number)
-        return DgcHesiInvoiceRecord(
+        return _DgcHesiInvoiceSourceRecord(
             company_code=company_code,
             expense_claim_code=_text(
                 raw[mapping.expense_claim_code],
                 mapping.expense_claim_code,
+                source,
+                row_number,
+            ),
+            invoice_id=_text(
+                raw[mapping.invoice_id],
+                mapping.invoice_id,
+                source,
+                row_number,
+            ),
+            expense_type_id=_text(
+                raw[mapping.expense_type_id],
+                mapping.expense_type_id,
+                source,
+                row_number,
+            ),
+            expense_line_amount=_amount(
+                raw[mapping.expense_line_amount],
+                mapping.expense_line_amount,
                 source,
                 row_number,
             ),
@@ -294,8 +398,184 @@ class DgcHesiNoInvoiceAdapter:
                 source,
                 row_number,
             ),
+            source_fingerprint=_record_fingerprint(raw),
             source_row_number=row_number,
         )
+
+    def _infer_invoice_expense_types(
+        self,
+        invoices: tuple[_DgcHesiInvoiceSourceRecord, ...],
+        reimbursements_by_claim: Mapping[str, list[DgcHesiReimbursementRecord]],
+    ) -> dict[str, str]:
+        expense_type_by_id: dict[str, str] = {}
+        for invoice in invoices:
+            reimbursements = self._matched_reimbursements(invoice, reimbursements_by_claim)
+            matching_codes = {
+                record.expense_type_code
+                for record in reimbursements
+                if record.expense_type_amount == invoice.expense_line_amount
+            }
+            if len(matching_codes) != 1:
+                continue
+            expense_type_code = next(iter(matching_codes))
+            existing = expense_type_by_id.get(invoice.expense_type_id)
+            if existing is not None and existing != expense_type_code:
+                raise DgcHesiNoInvoiceError(
+                    "CONFLICTING_INVOICE_EXPENSE_TYPE",
+                    "invoice expense type id mapped to conflicting reimbursement fee type codes",
+                    source="hesi_invoice",
+                    row_number=invoice.source_row_number,
+                    field=self._invoice_field_map.expense_type_id,
+                )
+            expense_type_by_id[invoice.expense_type_id] = expense_type_code
+        return expense_type_by_id
+
+    def _resolve_invoice(
+        self,
+        invoice: _DgcHesiInvoiceSourceRecord,
+        reimbursements_by_claim: Mapping[str, list[DgcHesiReimbursementRecord]],
+        expense_type_by_id: Mapping[str, str],
+        period_start: date,
+        period_end: date,
+    ) -> DgcHesiInvoiceRecord | None:
+        reimbursements = self._matched_reimbursements(invoice, reimbursements_by_claim)
+        approval_dates = {
+            record.approval_completed_on
+            for record in reimbursements
+            if record.approval_completed_on is not None
+        }
+        if not approval_dates:
+            return None
+        if len(approval_dates) != 1:
+            raise DgcHesiNoInvoiceError(
+                "AMBIGUOUS_INVOICE_APPROVAL_DATE",
+                "invoice claim matched reimbursement rows with conflicting completion dates",
+                source="hesi_invoice",
+                row_number=invoice.source_row_number,
+                field=self._reimbursement_field_map.approval_completed_at,
+            )
+        approval_date = next(iter(approval_dates))
+        if not period_start <= approval_date <= period_end:
+            return None
+
+        matching_codes = {
+            record.expense_type_code
+            for record in reimbursements
+            if record.expense_type_amount == invoice.expense_line_amount
+        }
+        expense_type_codes: tuple[str, ...]
+        if len(matching_codes) == 1:
+            expense_type_codes = (next(iter(matching_codes)),)
+        else:
+            inferred_code = expense_type_by_id.get(invoice.expense_type_id)
+            if inferred_code is not None and (
+                not matching_codes or inferred_code in matching_codes
+            ):
+                expense_type_codes = (inferred_code,)
+            else:
+                raise DgcHesiNoInvoiceError(
+                    "UNRESOLVED_INVOICE_EXPENSE_TYPE",
+                    "invoice fee type could not be matched safely to a reimbursement fee type code",
+                    source="hesi_invoice",
+                    row_number=invoice.source_row_number,
+                    field=self._invoice_field_map.expense_type_id,
+                )
+
+        return DgcHesiInvoiceRecord(
+            company_code=invoice.company_code,
+            approval_completed_on=approval_date,
+            expense_claim_code=invoice.expense_claim_code,
+            invoice_id=invoice.invoice_id,
+            expense_type_id=invoice.expense_type_id,
+            expense_type_code=expense_type_codes[0],
+            expense_type_candidates=expense_type_codes,
+            excluded_expense_type=all(
+                code in HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_CODES
+                for code in expense_type_codes
+            ),
+            expense_line_amount=invoice.expense_line_amount,
+            invoice_approved_amount=invoice.invoice_approved_amount,
+            source_row_number=invoice.source_row_number,
+        )
+
+    def _matched_reimbursements(
+        self,
+        invoice: _DgcHesiInvoiceSourceRecord,
+        reimbursements_by_claim: Mapping[str, list[DgcHesiReimbursementRecord]],
+    ) -> list[DgcHesiReimbursementRecord]:
+        matches = reimbursements_by_claim.get(invoice.expense_claim_code)
+        if not matches:
+            raise DgcHesiNoInvoiceError(
+                "UNMATCHED_INVOICE_CLAIM",
+                "invoice claim code did not match any reimbursement detail row",
+                source="hesi_invoice",
+                row_number=invoice.source_row_number,
+                field=self._invoice_field_map.expense_claim_code,
+            )
+        return matches
+
+
+def _deduplicate_reimbursements(
+    records: tuple[DgcHesiReimbursementRecord, ...],
+) -> tuple[tuple[DgcHesiReimbursementRecord, ...], int]:
+    """Drop exact repeated reimbursement lines emitted by overlapping pages."""
+
+    seen: set[tuple[object, ...]] = set()
+    unique: list[DgcHesiReimbursementRecord] = []
+    duplicate_count = 0
+    for record in records:
+        identity = record.source_fingerprint
+        if identity in seen:
+            duplicate_count += 1
+            continue
+        seen.add(identity)
+        unique.append(record)
+    return tuple(unique), duplicate_count
+
+
+def _deduplicate_invoice_sources(
+    records: tuple[_DgcHesiInvoiceSourceRecord, ...],
+    *,
+    field: str,
+) -> tuple[tuple[_DgcHesiInvoiceSourceRecord, ...], int]:
+    """Deduplicate invoices by ID and reject conflicting duplicate payloads."""
+
+    unique_by_id: dict[str, _DgcHesiInvoiceSourceRecord] = {}
+    duplicate_count = 0
+    for record in records:
+        existing = unique_by_id.get(record.invoice_id)
+        if existing is None:
+            unique_by_id[record.invoice_id] = record
+            continue
+        if existing.source_fingerprint != record.source_fingerprint:
+            raise DgcHesiNoInvoiceError(
+                "CONFLICTING_DUPLICATE_INVOICE",
+                "same invoice id was returned with conflicting payloads",
+                source="hesi_invoice",
+                row_number=record.source_row_number,
+                field=field,
+            )
+        duplicate_count += 1
+    return tuple(unique_by_id.values()), duplicate_count
+
+
+def _record_fingerprint(raw: Mapping[str, object]) -> str:
+    encoded = json.dumps(
+        dict(raw),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=_fingerprint_default,
+    ).encode("utf-8")
+    return sha256(encoded).hexdigest()
+
+
+def _fingerprint_default(value: object) -> object:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    raise TypeError(f"unsupported fingerprint value {type(value).__name__}")
 
 
 class DgcHesiNoInvoiceMetricAdapter:

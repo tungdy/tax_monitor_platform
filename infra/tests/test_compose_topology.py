@@ -106,21 +106,22 @@ DGC_ENVIRONMENT = {
     "DGC_HESI_REIMBURSEMENT_API_URL": "https://dgc.example.test/hesi-reimbursement",
     "DGC_HESI_REIMBURSEMENT_APP_KEY": "",
     "DGC_HESI_REIMBURSEMENT_APP_SECRET": "",
-    "DGC_HESI_REIMBURSEMENT_PAGE_SIZE": "15000",
+    "DGC_HESI_REIMBURSEMENT_PAGE_SIZE": "100",
     "DGC_HESI_REIMBURSEMENT_FIELD_MAP": (
-        '{"company_code":"company_code","approval_completed_at":"approval_completed_at",'
-        '"expense_type_code":"expense_type_code",'
-        '"expense_type_amount":"expense_type_amount"}'
+        '{"company_code":"company_code","approval_completed_at":"flow_end_date",'
+        '"expense_claim_code":"expense_code","expense_type_code":"fee_type_code",'
+        '"expense_type_amount":"fee_type_amount"}'
     ),
     "DGC_HESI_INVOICE_ENABLED": "false",
     "DGC_HESI_INVOICE_API_URL": "https://dgc.example.test/hesi-invoice",
     "DGC_HESI_INVOICE_APP_KEY": "",
     "DGC_HESI_INVOICE_APP_SECRET": "",
-    "DGC_HESI_INVOICE_PAGE_SIZE": "15000",
+    "DGC_HESI_INVOICE_PAGE_SIZE": "100",
     "DGC_HESI_INVOICE_FIELD_MAP": (
-        '{"company_code":"company_code","approval_completed_at":"approval_completed_at",'
-        '"expense_type_code":"expense_type_code",'
-        '"invoice_approved_amount":"invoice_approved_amount"}'
+        '{"company_code":"company_code","expense_claim_code":"code",'
+        '"invoice_id":"invoice_id","expense_type_id":"feetypeid",'
+        '"expense_line_amount":"amount_standard_dec",'
+        '"invoice_approved_amount":"approve_amount_dec"}'
     ),
     "DGC_SAP_DIVIDEND_DETAIL_ENABLED": "true",
     "DGC_SAP_DIVIDEND_DETAIL_API_URL": "https://dgc.example.test/dividend-detail",
@@ -448,11 +449,12 @@ def test_hesi_invoice_env_example_uses_safe_defaults() -> None:
     )
     assert values["DGC_HESI_INVOICE_APP_KEY"] == ""
     assert values["DGC_HESI_INVOICE_APP_SECRET"] == ""
-    assert values["DGC_HESI_INVOICE_PAGE_SIZE"] == "15000"
+    assert values["DGC_HESI_INVOICE_PAGE_SIZE"] == "100"
     assert values["DGC_HESI_INVOICE_FIELD_MAP"] == (
-        '{"company_code":"company_code","approval_completed_at":"approval_completed_at",'
-        '"expense_type_code":"expense_type_code",'
-        '"invoice_approved_amount":"invoice_approved_amount"}'
+        '{"company_code":"company_code","expense_claim_code":"code",'
+        '"invoice_id":"invoice_id","expense_type_id":"feetypeid",'
+        '"expense_line_amount":"amount_standard_dec",'
+        '"invoice_approved_amount":"approve_amount_dec"}'
     )
 
 
@@ -465,11 +467,11 @@ def test_hesi_detail_env_example_uses_new_contract() -> None:
     )
     assert values["DGC_HESI_REIMBURSEMENT_APP_KEY"] == ""
     assert values["DGC_HESI_REIMBURSEMENT_APP_SECRET"] == ""
-    assert values["DGC_HESI_REIMBURSEMENT_PAGE_SIZE"] == "15000"
+    assert values["DGC_HESI_REIMBURSEMENT_PAGE_SIZE"] == "100"
     assert values["DGC_HESI_REIMBURSEMENT_FIELD_MAP"] == (
-        '{"company_code":"company_code","approval_completed_at":"approval_completed_at",'
-        '"expense_type_code":"expense_type_code",'
-        '"expense_type_amount":"expense_type_amount"}'
+        '{"company_code":"company_code","approval_completed_at":"flow_end_date",'
+        '"expense_claim_code":"expense_code","expense_type_code":"fee_type_code",'
+        '"expense_type_amount":"fee_type_amount"}'
     )
 
 

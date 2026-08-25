@@ -127,6 +127,10 @@ class DgcHesiNoInvoiceImportService:
                     "dgc_hesi_no_invoice_scope_sha256": scope_sha256,
                     "reimbursement_checksum": reimbursement_result.checksum,
                     "invoice_checksum": invoice_result.checksum,
+                    "reimbursement_source_record_count": len(reimbursement_result.records),
+                    "invoice_source_record_count": len(invoice_result.records),
+                    "reimbursement_duplicate_count": result.reimbursement_duplicate_count,
+                    "invoice_duplicate_count": result.invoice_duplicate_count,
                 },
             )
         )

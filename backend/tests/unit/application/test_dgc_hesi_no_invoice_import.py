@@ -107,6 +107,10 @@ def test_import_fetches_both_sources_and_persists_one_metric() -> None:
             "dgc_hesi_no_invoice_scope_sha256": scope_sha256,
             "reimbursement_checksum": "a" * 64,
             "invoice_checksum": "b" * 64,
+            "reimbursement_source_record_count": 1,
+            "invoice_source_record_count": 1,
+            "reimbursement_duplicate_count": 0,
+            "invoice_duplicate_count": 0,
         },
     )
     assert ingest.ingested is not None
@@ -150,5 +154,8 @@ def _invoice(amount: str) -> dict[str, object]:
     return {
         "company_code": "3000",
         "code": "C-1",
+        "invoice_id": "INVOICE-C-1",
+        "feetypeid": "TYPE-F1000",
+        "amount_standard_dec": "100",
         "approve_amount_dec": amount,
     }

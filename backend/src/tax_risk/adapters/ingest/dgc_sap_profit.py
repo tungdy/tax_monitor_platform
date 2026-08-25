@@ -334,7 +334,7 @@ class DgcSapProfitClient:
             body = dict(parameters)
             body["limitValue"] = self._config.page_size
             body["offsetValue"] = offset
-            page, response_bytes, total_size, row_size = self._fetch_page(body)
+            page, response_bytes, _total_size, row_size = self._fetch_page(body)
             total_response_bytes += response_bytes
             if total_response_bytes > self._config.max_total_bytes:
                 raise DgcResourceLimitError("DGC result exceeded the configured total byte limit")
@@ -350,12 +350,6 @@ class DgcSapProfitClient:
             if page:
                 page_checksums.add(page_checksum)
             records.extend(page)
-            if total_size is not None and len(records) >= total_size:
-                frozen_records = tuple(records)
-                return DgcFetchResult(
-                    records=frozen_records,
-                    checksum=_checksum(frozen_records),
-                )
             if row_size is None:
                 if len(page) < self._config.page_size:
                     frozen_records = tuple(records)

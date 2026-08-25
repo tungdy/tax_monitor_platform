@@ -36,7 +36,7 @@ def test_create_app_owns_and_closes_enabled_hesi_reimbursement_client(
         dgc_hesi_reimbursement_api_url="https://dgc.example.test/hesi-detail",
         dgc_hesi_reimbursement_app_key="hesi-key",
         dgc_hesi_reimbursement_app_secret="hesi-secret",
-        dgc_hesi_reimbursement_page_size=777,
+        dgc_hesi_reimbursement_page_size=100,
         dgc_tls_server_name=None,
         dgc_tls_pinned_certificate_sha256=None,
     )
@@ -49,7 +49,7 @@ def test_create_app_owns_and_closes_enabled_hesi_reimbursement_client(
     assert owned.config.api_url == "https://dgc.example.test/hesi-detail"
     assert owned.config.app_key == "hesi-key"
     assert owned.config.app_secret == "hesi-secret"
-    assert owned.config.page_size == 777
+    assert owned.config.page_size == 100
     with TestClient(app):
         assert owned.closed is False
     assert owned.closed is True
