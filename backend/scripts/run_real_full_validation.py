@@ -285,6 +285,7 @@ def _client_config(
     secret_name: str,
     page_size: int,
     request_method: Literal["GET", "POST"] = "POST",
+    strict_offset_pagination: bool = False,
 ) -> DgcClientConfig:
     api_url = getattr(settings, url_name)
     if not isinstance(api_url, str) or not api_url.strip():
@@ -301,6 +302,7 @@ def _client_config(
         max_page_bytes=settings.dgc_max_page_bytes,
         max_total_bytes=settings.dgc_max_total_bytes,
         token_ttl=settings.dgc_token_ttl_seconds,
+        strict_offset_pagination=strict_offset_pagination,
         tls_server_name=settings.dgc_tls_server_name,
         tls_pinned_certificate_sha256=settings.dgc_tls_pinned_certificate_sha256,
     )
@@ -351,6 +353,7 @@ def _build_sources(settings: Settings) -> dict[str, DgcSapProfitClient]:
                 key_name="dgc_hesi_reimbursement_app_key",
                 secret_name="dgc_hesi_reimbursement_app_secret",
                 page_size=settings.dgc_hesi_reimbursement_page_size,
+                strict_offset_pagination=True,
             )
         ),
         "dgc_hesi_invoice": DgcSapProfitClient(
@@ -360,7 +363,8 @@ def _build_sources(settings: Settings) -> dict[str, DgcSapProfitClient]:
                 key_name="dgc_hesi_invoice_app_key",
                 secret_name="dgc_hesi_invoice_app_secret",
                 page_size=settings.dgc_hesi_invoice_page_size,
-                request_method="GET",
+                request_method="POST",
+                strict_offset_pagination=True,
             )
         ),
     }

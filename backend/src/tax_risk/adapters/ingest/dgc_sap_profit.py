@@ -118,6 +118,7 @@ class DgcClientConfig:
     max_page_bytes: int = 10 * 1024 * 1024
     max_total_bytes: int = 64 * 1024 * 1024
     token_ttl: float = 24 * 60 * 60
+    strict_offset_pagination: bool = False
     tls_server_name: str | None = None
     tls_pinned_certificate_sha256: str | None = None
 
@@ -169,6 +170,10 @@ class DgcClientConfig:
             raise TypeError("page_size must be an integer")
         if self.page_size <= 0:
             raise ValueError("page_size must be greater than zero")
+        if self.strict_offset_pagination and self.page_size > 25:
+            raise ValueError(
+                "strict offset pagination page_size must not exceed 25"
+            )
         if type(self.max_pages) is not int:
             raise TypeError("max_pages must be an integer")
         if self.max_pages <= 0:
@@ -327,10 +332,14 @@ class DgcSapProfitClient:
 
         records: list[Mapping[str, object]] = []
         page_checksums: set[str] = set()
+        requested_offsets: set[int] = set()
         offset = 0
         total_response_bytes = 0
         effective_page_size = self._config.page_size
         for _page_number in range(1, self._config.max_pages + 1):
+            if offset in requested_offsets:
+                raise DgcPaginationError("DGC pagination requested an overlapping offset")
+            requested_offsets.add(offset)
             body = dict(parameters)
             body["limitValue"] = self._config.page_size
             body["offsetValue"] = offset
@@ -350,6 +359,15 @@ class DgcSapProfitClient:
             if page:
                 page_checksums.add(page_checksum)
             records.extend(page)
+            if self._config.strict_offset_pagination:
+                if not page:
+                    frozen_records = tuple(records)
+                    return DgcFetchResult(
+                        records=frozen_records,
+                        checksum=_checksum(frozen_records),
+                    )
+                offset += self._config.page_size
+                continue
             if row_size is None:
                 if len(page) < self._config.page_size:
                     frozen_records = tuple(records)

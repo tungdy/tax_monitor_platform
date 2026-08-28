@@ -13,6 +13,7 @@ from tax_risk.adapters.ingest.dgc_hesi_no_invoice import (
     DgcHesiNoInvoiceMetricAdapter,
     DgcHesiReimbursementFieldMap,
     HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_CODES,
+    HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_PREFIXES,
 )
 from tax_risk.adapters.ingest.dgc_sap_profit import DgcFetchResult
 
@@ -25,6 +26,21 @@ def test_calculates_ytd_difference_and_excludes_all_configured_codes() -> None:
         amount = str(index + 1)
         reimbursements.append(_reimbursement(claim_code, "2026-03-01", code.lower(), amount))
         invoices.append(_invoice(claim_code, f"TYPE-{code}", amount, amount))
+    for index, prefix in enumerate(HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_PREFIXES):
+        claim_code = f"PREFIX-EXCLUDED-{index}"
+        expense_type_code = f"{prefix}99"
+        amount = str(index + 101)
+        reimbursements.append(
+            _reimbursement(
+                claim_code,
+                "2026-03-01",
+                expense_type_code.lower(),
+                amount,
+            )
+        )
+        invoices.append(
+            _invoice(claim_code, f"TYPE-{expense_type_code}", amount, amount)
+        )
     reimbursements.append(_reimbursement("FUTURE", "2026-07-01", "F1000", "900"))
     reimbursements.append(_reimbursement("PRIOR", "2025-12-31", "F1000", "800"))
     invoices.append(_invoice("PRIOR", "TYPE-F1000", "800", "800"))
@@ -34,9 +50,12 @@ def test_calculates_ytd_difference_and_excludes_all_configured_codes() -> None:
     assert result.reimbursement_expense_total == Decimal("100.50")
     assert result.invoice_approved_total == Decimal("30.25")
     assert result.hesi_no_invoice == Decimal("70.25")
-    assert result.excluded_reimbursement_count == 19
+    expected_excluded_count = len(HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_CODES) + len(
+        HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_PREFIXES
+    )
+    assert result.excluded_reimbursement_count == expected_excluded_count
     assert result.excluded_invoice_count == 0
-    assert len(result.reimbursement_records) == 20
+    assert len(result.reimbursement_records) == expected_excluded_count + 1
     assert len(result.invoice_records) == 1
     assert len(result.source_checksum) == 64
 
@@ -82,18 +101,56 @@ def test_deduplicates_exact_reimbursement_and_invoice_rows_before_aggregation() 
     assert result.invoice_duplicate_count == 1
 
 
-def test_rejects_conflicting_duplicate_invoice_payloads() -> None:
-    with pytest.raises(DgcHesiNoInvoiceError) as captured:
-        _adapter(
-            [_reimbursement("C-1", "2026-06-30", "F1000", "100")],
-            [
-                _invoice("C-1", "TYPE-F1000", "100", "20", invoice_id="INV-1"),
-                _invoice("C-1", "TYPE-F1000", "100", "21", invoice_id="INV-1"),
-            ],
-        ).adapt()
+def test_preserves_distinct_allocations_for_same_claim_invoice_and_type() -> None:
+    result = _adapter(
+        [_reimbursement("C-1", "2026-06-30", "F1000", "100")],
+        [
+            _invoice("C-1", "TYPE-F1000", "100", "20", invoice_id="INV-1"),
+            _invoice("C-1", "TYPE-F1000", "100", "21", invoice_id="INV-1"),
+        ],
+    ).adapt()
 
-    assert captured.value.error_code == "CONFLICTING_DUPLICATE_INVOICE"
-    assert captured.value.field == "invoice_id"
+    assert result.invoice_approved_total == Decimal("41")
+    assert result.hesi_no_invoice == Decimal("59")
+    assert result.invoice_duplicate_count == 0
+    assert result.claim_level_aggregation_codes == ()
+
+
+def test_rolls_up_by_claim_when_one_invoice_spans_multiple_expense_types() -> None:
+    result = _adapter(
+        [
+            _reimbursement("C-1", "2026-06-30", "F1000", "100"),
+            _reimbursement("C-1", "2026-06-30", "F1001", "200"),
+        ],
+        [
+            _invoice("C-1", "TYPE-F1000", "100", "150", invoice_id="INV-1"),
+            _invoice("C-1", "TYPE-F1001", "200", "20", invoice_id="INV-1"),
+        ],
+    ).adapt()
+
+    assert result.reimbursement_expense_total == Decimal("300")
+    assert result.invoice_approved_total == Decimal("170")
+    assert result.hesi_no_invoice == Decimal("130")
+    assert result.invoice_duplicate_count == 0
+    assert result.claim_level_aggregation_codes == ("C-1",)
+
+
+def test_allows_same_invoice_id_for_different_claim_codes() -> None:
+    result = _adapter(
+        [
+            _reimbursement("C-1", "2026-06-30", "F1000", "100"),
+            _reimbursement("C-2", "2026-06-30", "F1000", "100"),
+        ],
+        [
+            _invoice("C-1", "TYPE-F1000", "100", "20", invoice_id="INV-SHARED"),
+            _invoice("C-2", "TYPE-F1000", "100", "30", invoice_id="INV-SHARED"),
+        ],
+    ).adapt()
+
+    assert result.invoice_approved_total == Decimal("50")
+    assert result.hesi_no_invoice == Decimal("150")
+    assert result.invoice_duplicate_count == 0
+    assert result.claim_level_aggregation_codes == ()
 
 
 def test_successful_empty_sources_materialize_evidenced_zero_metric() -> None:
@@ -238,8 +295,8 @@ def test_excludes_invoice_rows_for_excluded_expense_types() -> None:
             _reimbursement("MULTI", "2026-02-01", "CLF0101", "200"),
         ],
         [
-            _invoice("MULTI", "TYPE-F1000", "100", "50"),
-            _invoice("MULTI", "TYPE-CLF0101", "200", "200"),
+            _invoice("MULTI", "TYPE-F1000", "100", "50", invoice_id="INV-1"),
+            _invoice("MULTI", "TYPE-CLF0101", "200", "200", invoice_id="INV-1"),
         ],
     ).adapt()
 
@@ -247,6 +304,7 @@ def test_excludes_invoice_rows_for_excluded_expense_types() -> None:
     assert result.invoice_approved_total == Decimal("50")
     assert result.hesi_no_invoice == Decimal("50")
     assert result.excluded_invoice_count == 1
+    assert result.claim_level_aggregation_codes == ("MULTI",)
 
 
 def test_rejects_ambiguous_included_expense_type_mapping() -> None:

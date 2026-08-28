@@ -276,13 +276,13 @@ DGC_HESI_REIMBURSEMENT_ENABLED=false
 DGC_HESI_REIMBURSEMENT_API_URL=https://116.63.221.181/post/hesimingxi
 DGC_HESI_REIMBURSEMENT_APP_KEY=<secret-store-injected-app-key>
 DGC_HESI_REIMBURSEMENT_APP_SECRET=<secret-store-injected-app-secret>
-DGC_HESI_REIMBURSEMENT_PAGE_SIZE=100
+DGC_HESI_REIMBURSEMENT_PAGE_SIZE=25
 DGC_HESI_REIMBURSEMENT_FIELD_MAP={"company_code":"company_code","approval_completed_at":"flow_end_date","expense_claim_code":"expense_code","expense_type_code":"fee_type_code","expense_type_amount":"fee_type_amount"}
 DGC_HESI_INVOICE_ENABLED=false
 DGC_HESI_INVOICE_API_URL=https://116.63.221.181/post/hesiinvoice
 DGC_HESI_INVOICE_APP_KEY=<secret-store-injected-app-key>
 DGC_HESI_INVOICE_APP_SECRET=<secret-store-injected-app-secret>
-DGC_HESI_INVOICE_PAGE_SIZE=100
+DGC_HESI_INVOICE_PAGE_SIZE=25
 DGC_HESI_INVOICE_FIELD_MAP={"company_code":"company_code","expense_claim_code":"code","invoice_id":"invoice_id","expense_type_id":"feetypeid","expense_line_amount":"amount_standard_dec","invoice_approved_amount":"approve_amount_dec"}
 DGC_SAP_DIVIDEND_DETAIL_ENABLED=false
 DGC_SAP_DIVIDEND_DETAIL_API_URL=https://116.63.221.181/post/settlement_adjustment
@@ -345,11 +345,11 @@ cd backend
 
 科目余额表接口地址为 `https://116.63.221.181/post/sapaccountbalance`，使用独立 AppKey/AppSecret。Body 参数为可选字符串 `company_code`、必填字符串 `fiscal_year/fiscal_period` 以及分页参数 `limitValue/offsetValue`；季度导入将月份规范为三位（如 `006`）。真实响应合同固定为 `account_code/account_name/closing_balance/company_code/company_name/credit_amount/debit_amount/fiscal_period/fiscal_year/input_tax_process_method/net_amount/opening_balance/sfkf` 共13个字段，并严格校验公司、年度和期间作用域。其他应付款暂估只取工作簿列示的十个 `224105` 科目：逐行期末余额大于等于0时取0，小于0时乘以-1，再精确求和；科目余额表查询成功但未返回任一目标科目时，生成有来源校验和的正零指标。SAP累计已计提递延所得税费用只取 `1811030000` 的期末余额原值；查询成功但未找到该科目时同样生成有来源校验和的正零指标。整个接口调用失败、响应不合法或未导入时仍按缺数据阻断。受控导入端点为 `POST /api/v1/ingest-batches/dgc-sap-account-balance`。
 
-合思报销单明细接口地址为 `https://116.63.221.181/post/hesimingxi`，使用独立 AppKey/AppSecret。Body 参数 `company_code`（公司代码编码）和 `submit_date`（提交时间）可选，提供时不可为空；`limitValue` 和 `offsetValue` 必填并由连接器按每页 `100` 行从 `offsetValue=0` 连续翻页至末页，避免网关在大页请求时漏数。无票计算在分页完成后对完全相同的报销明细行去重，并把去重数量写入批次证据。真实字段合同使用 `expense_code`、`flow_end_date`、`fee_type_code` 和 `fee_type_amount`。
+合思报销单明细接口地址为 `https://116.63.221.181/post/hesimingxi`，使用独立 AppKey/AppSecret。Body 参数 `company_code`（公司代码编码）和 `submit_date`（提交时间）可选，提供时不可为空；`limitValue` 和 `offsetValue` 必填并由连接器按每页 `25` 行从 `offsetValue=0` 连续翻页至空终止页，避免网关大页响应漏数。无票计算在分页完成后对完全相同的报销明细行去重，并把去重数量写入批次证据。真实字段合同使用 `expense_code`、`flow_end_date`、`fee_type_code` 和 `fee_type_amount`。
 
-“合思报销单发票查询”接口地址为 `https://116.63.221.181/post/hesiinvoice`，使用独立 AppKey/AppSecret。该网关实际要求签名 GET 请求，`company_code`、`limitValue` 和 `offsetValue` 放入 Query；POST 会返回 `DLM.4313`。连接器同样固定使用不超过 `100` 行的小页并连续递增 offset，直至取完全部页面。无票计算要求 `invoice_id`，分页完成后按 `invoice_id` 去重；同一 ID 的字段载荷冲突时阻断，完全重复行只保留一条并写入批次证据。真实字段合同使用 `code`、`invoice_id`、`feetypeid`、`amount_standard_dec` 和 `approve_amount_dec`。
+“合思报销单发票查询”接口地址为 `https://116.63.221.181/post/hesiinvoice`，使用独立 AppKey/AppSecret。截图中的 API 目录 `/agent/jyfin` 是管理分组，实际请求 Path 为 `/post/hesiinvoice`；接口使用签名 POST 请求，`company_code`、`limitValue` 和 `offsetValue` 放入 JSON 请求体。连接器固定使用 `25` 行小页并连续递增 offset，直至空终止页；Hesi 专用严格模式不会因非空短页提前结束，并拒绝重复 offset。无票计算要求 `invoice_id`，分页完成后只按完整载荷 SHA-256 删除完全相同的重复行并写入批次证据；同一 `(code, invoice_id)` 的不同载荷视为发票分摊明细全部保留，不再误判为分页冲突。真实字段合同使用 `code`、`invoice_id`、`feetypeid`、`amount_standard_dec` 和 `approve_amount_dec`。
 
-合思无票报销金额按公司、本年1月1日至季度末的审批完成时间聚合。合思报销明细排除以下费用类型编码：`CLF0101`、`CLF0102`、`CLF0103`、`CLF0117`、`CLF0118`、`CLF0119`、`CLF0120`、`CLF0126`、`CLF0130`、`CLF0131`、`F0507`、`F0508`、`F0605`、`F5409`、`F5724`、`F5725`、`F5809`、`F5811`、`F6309`。发票先通过 `hesiinvoice.code = hesimingxi.expense_code` 关联报销单，再在同一报销单内用 `amount_standard_dec = fee_type_amount` 及稳定的 `feetypeid` 唯一识别 `fee_type_code`；无法唯一识别时阻断计算。未审批单据不计入。系统按“报销单号 + 报销类型”分别汇总 `fee_type_amount` 与 `approve_amount_dec`，对每组计算 `max(报销金额 - 发票核准金额, 0)` 后汇总，不允许发票超额跨报销单或跨报销类型抵销无票金额。金额使用精确十进制。受控导入端点为 `POST /api/v1/ingest-batches/dgc-hesi-no-invoice`。
+合思无票报销金额按公司、本年1月1日至季度末的审批完成时间聚合。合思报销明细排除以下费用类型编码：`CLF0101`、`CLF0102`、`CLF0103`、`CLF0117`、`CLF0118`、`CLF0119`、`CLF0120`、`CLF0126`、`CLF0130`、`CLF0131`、`F0507`、`F0508`、`F0605`、`F5409`、`F5724`、`F5725`、`F5809`、`F5811`、`F6309`；同时排除以 `F39`、`F72`、`F73`、`F35`、`F64`、`F07`、`F74`、`F44`、`F40`、`F55` 开头的全部费用类型编码。费用类型比较统一转为大写。发票先通过 `hesiinvoice.code = hesimingxi.expense_code` 关联报销单，再在同一报销单内用 `amount_standard_dec = fee_type_amount` 及稳定的 `feetypeid` 唯一识别 `fee_type_code`；无法唯一识别时阻断计算。未审批单据不计入。通常按“报销单号 + 报销类型”分别汇总 `fee_type_amount` 与 `approve_amount_dec` 并计算 `max(报销金额 - 发票核准金额, 0)`；如果同一报销单内任一 `invoice_id` 关联多个 `feetypeid`，则该报销单改为按 `code` 汇总所有未排除费用类型的报销金额和发票核准金额，再计算 `max(报销合计 - 发票合计, 0)`，避免同一张发票的跨费用类型分摊被重复截断。金额使用精确十进制。受控导入端点为 `POST /api/v1/ingest-batches/dgc-hesi-no-invoice`。
 
 “发票明细”接口地址为 `https://116.63.221.181/post/writeoff`，使用独立 AppKey/AppSecret。Body 参数 `accounting_date`（入账日期）和 `comp`（公司代码）可选，提供时不可为空；`limitValue`和 `offsetValue` 必填并由连接器按 `15000` 的默认页大小自动管理。当前已完成独立配置、HTTPS 校验、签名分页和原始请求接线；因尚未提供返回字段合同，默认保持禁用，不做业务字段映射或入库。
 

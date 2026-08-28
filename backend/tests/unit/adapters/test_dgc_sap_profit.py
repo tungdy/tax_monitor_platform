@@ -227,20 +227,20 @@ def test_app_secret_get_mode_signs_paginated_query_without_a_request_body() -> N
 
 
 @pytest.mark.parametrize("request_method", ("GET", "POST"))
-def test_hesi_app_secret_modes_fetch_every_100_row_page(request_method: str) -> None:
+def test_hesi_app_secret_modes_fetch_every_50_row_page(request_method: str) -> None:
     offsets: list[int] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request_method == "GET":
             offset = int(request.url.params["offsetValue"])
-            assert request.url.params["limitValue"] == "100"
+            assert request.url.params["limitValue"] == "50"
         else:
             body = json.loads(request.content)
             assert isinstance(body, dict)
             offset = int(body["offsetValue"])
-            assert body["limitValue"] == 100
+            assert body["limitValue"] == 50
         offsets.append(offset)
-        row_count = min(100, 250 - offset)
+        row_count = min(50, 250 - offset)
         rows = [{"id": offset + index} for index in range(row_count)]
         return httpx.Response(
             200,
@@ -260,14 +260,14 @@ def test_hesi_app_secret_modes_fetch_every_100_row_page(request_method: str) -> 
             request_method=request_method,
             app_key="test-app-key",
             app_secret="test-app-secret",
-            page_size=100,
+            page_size=25,
         ),
         httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
     result = client.fetch({"company_code": "3KF0"})
 
-    assert offsets == [0, 100, 200]
+    assert offsets == [0, 25, 50, 75, 100, 125, 150, 175, 200, 225, 250]
     assert len(result.records) == 250
     assert result.records[-1]["id"] == 249
 
@@ -307,6 +307,52 @@ def test_client_does_not_trust_an_undercounted_total_size() -> None:
 
     assert [body["offsetValue"] for body in api_bodies] == [0, 2]
     assert tuple(row["id"] for row in result.records) == (1, 2, 3)
+
+
+def test_strict_offset_pagination_continues_after_short_nonempty_page() -> None:
+    offsets: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert isinstance(body, dict)
+        offsets.append(body["offsetValue"])
+        rows = [{"id": body["offsetValue"]}]
+        if body["offsetValue"] == 50:
+            rows = []
+        return httpx.Response(
+            200,
+            json={
+                "errCode": "DLM.0",
+                "data": {"rowSize": len(rows), "data": rows},
+            },
+        )
+
+    client = DgcSapProfitClient(
+        DgcClientConfig(
+            api_url="https://dgc.example.test/hesimingxi",
+            app_key="test-app-key",
+            app_secret="test-app-secret",
+            page_size=25,
+            strict_offset_pagination=True,
+        ),
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    result = client.fetch({"company_code": "3KF0"})
+
+    assert offsets == [0, 25, 50]
+    assert tuple(row["id"] for row in result.records) == (0, 25)
+
+
+def test_strict_offset_pagination_rejects_large_page_size() -> None:
+    with pytest.raises(ValueError, match="must not exceed 25"):
+        DgcClientConfig(
+            api_url="https://dgc.example.test/hesiinvoice",
+            app_key="test-app-key",
+            app_secret="test-app-secret",
+            page_size=26,
+            strict_offset_pagination=True,
+        )
 
 
 def test_get_mode_rejects_null_or_structured_query_parameters() -> None:

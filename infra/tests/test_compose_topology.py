@@ -106,7 +106,7 @@ DGC_ENVIRONMENT = {
     "DGC_HESI_REIMBURSEMENT_API_URL": "https://dgc.example.test/hesi-reimbursement",
     "DGC_HESI_REIMBURSEMENT_APP_KEY": "",
     "DGC_HESI_REIMBURSEMENT_APP_SECRET": "",
-    "DGC_HESI_REIMBURSEMENT_PAGE_SIZE": "100",
+    "DGC_HESI_REIMBURSEMENT_PAGE_SIZE": "25",
     "DGC_HESI_REIMBURSEMENT_FIELD_MAP": (
         '{"company_code":"company_code","approval_completed_at":"flow_end_date",'
         '"expense_claim_code":"expense_code","expense_type_code":"fee_type_code",'
@@ -116,7 +116,7 @@ DGC_ENVIRONMENT = {
     "DGC_HESI_INVOICE_API_URL": "https://dgc.example.test/hesi-invoice",
     "DGC_HESI_INVOICE_APP_KEY": "",
     "DGC_HESI_INVOICE_APP_SECRET": "",
-    "DGC_HESI_INVOICE_PAGE_SIZE": "100",
+    "DGC_HESI_INVOICE_PAGE_SIZE": "25",
     "DGC_HESI_INVOICE_FIELD_MAP": (
         '{"company_code":"company_code","expense_claim_code":"code",'
         '"invoice_id":"invoice_id","expense_type_id":"feetypeid",'
@@ -449,7 +449,7 @@ def test_hesi_invoice_env_example_uses_safe_defaults() -> None:
     )
     assert values["DGC_HESI_INVOICE_APP_KEY"] == ""
     assert values["DGC_HESI_INVOICE_APP_SECRET"] == ""
-    assert values["DGC_HESI_INVOICE_PAGE_SIZE"] == "100"
+    assert values["DGC_HESI_INVOICE_PAGE_SIZE"] == "25"
     assert values["DGC_HESI_INVOICE_FIELD_MAP"] == (
         '{"company_code":"company_code","expense_claim_code":"code",'
         '"invoice_id":"invoice_id","expense_type_id":"feetypeid",'
@@ -467,7 +467,7 @@ def test_hesi_detail_env_example_uses_new_contract() -> None:
     )
     assert values["DGC_HESI_REIMBURSEMENT_APP_KEY"] == ""
     assert values["DGC_HESI_REIMBURSEMENT_APP_SECRET"] == ""
-    assert values["DGC_HESI_REIMBURSEMENT_PAGE_SIZE"] == "100"
+    assert values["DGC_HESI_REIMBURSEMENT_PAGE_SIZE"] == "25"
     assert values["DGC_HESI_REIMBURSEMENT_FIELD_MAP"] == (
         '{"company_code":"company_code","approval_completed_at":"flow_end_date",'
         '"expense_claim_code":"expense_code","expense_type_code":"fee_type_code",'

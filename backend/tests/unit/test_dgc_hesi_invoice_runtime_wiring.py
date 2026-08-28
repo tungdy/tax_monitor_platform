@@ -34,7 +34,7 @@ def test_create_app_owns_and_closes_enabled_hesi_invoice_client(
         dgc_hesi_invoice_api_url="https://dgc.example.test/hesi-invoice",
         dgc_hesi_invoice_app_key="hesi-invoice-key",
         dgc_hesi_invoice_app_secret="hesi-invoice-secret",
-        dgc_hesi_invoice_page_size=100,
+        dgc_hesi_invoice_page_size=25,
         dgc_tls_server_name=None,
         dgc_tls_pinned_certificate_sha256=None,
     )
@@ -45,10 +45,11 @@ def test_create_app_owns_and_closes_enabled_hesi_invoice_client(
     owned = _OwnedClient.instances[0]
     assert app.state.dgc_hesi_invoice_client is owned
     assert owned.config.api_url == "https://dgc.example.test/hesi-invoice"
-    assert owned.config.request_method == "GET"
+    assert owned.config.request_method == "POST"
     assert owned.config.app_key == "hesi-invoice-key"
     assert owned.config.app_secret == "hesi-invoice-secret"
-    assert owned.config.page_size == 100
+    assert owned.config.page_size == 25
+    assert owned.config.strict_offset_pagination is True
     with TestClient(app):
         assert owned.closed is False
     assert owned.closed is True

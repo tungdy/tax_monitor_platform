@@ -42,6 +42,19 @@ HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_CODES: Final[frozenset[str]] = frozenset(
         "F6309",
     }
 )
+HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_PREFIXES: Final[tuple[str, ...]] = (
+    "F39",
+    "F72",
+    "F73",
+    "F35",
+    "F64",
+    "F07",
+    "F74",
+    "F44",
+    "F40",
+    "F55",
+)
+HESI_NO_INVOICE_CALCULATION_VERSION: Final[str] = "code-rollup-v3"
 
 
 class DgcHesiNoInvoiceError(ValueError):
@@ -133,6 +146,7 @@ class DgcHesiNoInvoiceResult:
     source_checksum: str
     reimbursement_duplicate_count: int = 0
     invoice_duplicate_count: int = 0
+    claim_level_aggregation_codes: tuple[str, ...] = ()
 
 
 class DgcHesiNoInvoiceAdapter:
@@ -178,8 +192,7 @@ class DgcHesiNoInvoiceAdapter:
             for row_number, raw in enumerate(self._invoice_result.records, start=1)
         )
         invoice_sources, invoice_duplicate_count = _deduplicate_invoice_sources(
-            parsed_invoice_sources,
-            field=self._invoice_field_map.invoice_id,
+            parsed_invoice_sources
         )
         period_start = date(self._fiscal_year, 1, 1)
         period_end = date(
@@ -196,7 +209,7 @@ class DgcHesiNoInvoiceAdapter:
         included_reimbursements = tuple(
             record
             for record in scoped_reimbursements
-            if record.expense_type_code not in HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_CODES
+            if not _is_excluded_expense_type_code(record.expense_type_code)
         )
         included_claim_codes = frozenset(
             record.expense_claim_code for record in included_reimbursements
@@ -231,33 +244,61 @@ class DgcHesiNoInvoiceAdapter:
             for record in scoped_invoices
             if not record.excluded_expense_type
         )
+        expense_types_by_claim_invoice: dict[tuple[str, str], set[str]] = {}
+        for record in scoped_invoices:
+            key = (record.expense_claim_code, record.invoice_id)
+            expense_types_by_claim_invoice.setdefault(key, set()).add(
+                record.expense_type_id
+            )
+        claim_level_aggregation_codes = tuple(
+            sorted(
+                {
+                    claim_code
+                    for (claim_code, _invoice_id), expense_type_ids in (
+                        expense_types_by_claim_invoice.items()
+                    )
+                    if len(expense_type_ids) > 1
+                }
+            )
+        )
+        claim_level_aggregation_set = frozenset(claim_level_aggregation_codes)
         reimbursement_total = _exact_sum(
             tuple(record.expense_type_amount for record in included_reimbursements)
         )
         invoice_total = _exact_sum(
             tuple(record.invoice_approved_amount for record in included_invoices)
         )
-        reimbursement_totals_by_type: dict[tuple[str, str], Decimal] = {}
+        reimbursement_totals_by_group: dict[tuple[str, str | None], Decimal] = {}
         for record in included_reimbursements:
-            key = (record.expense_claim_code, record.expense_type_code)
-            reimbursement_totals_by_type[key] = (
-                reimbursement_totals_by_type.get(key, Decimal(0))
+            key = (
+                record.expense_claim_code,
+                None
+                if record.expense_claim_code in claim_level_aggregation_set
+                else record.expense_type_code,
+            )
+            reimbursement_totals_by_group[key] = (
+                reimbursement_totals_by_group.get(key, Decimal(0))
                 + record.expense_type_amount
             )
-        invoice_totals_by_type: dict[tuple[str, str], Decimal] = {}
+        invoice_totals_by_group: dict[tuple[str, str | None], Decimal] = {}
         for invoice_record in included_invoices:
-            key = (invoice_record.expense_claim_code, invoice_record.expense_type_code)
-            invoice_totals_by_type[key] = (
-                invoice_totals_by_type.get(key, Decimal(0))
+            key = (
+                invoice_record.expense_claim_code,
+                None
+                if invoice_record.expense_claim_code in claim_level_aggregation_set
+                else invoice_record.expense_type_code,
+            )
+            invoice_totals_by_group[key] = (
+                invoice_totals_by_group.get(key, Decimal(0))
                 + invoice_record.invoice_approved_amount
             )
         no_invoice_amount = _exact_sum(
             tuple(
                 max(
-                    reimbursement_amount - invoice_totals_by_type.get(key, Decimal(0)),
+                    reimbursement_amount - invoice_totals_by_group.get(key, Decimal(0)),
                     Decimal(0),
                 )
-                for key, reimbursement_amount in reimbursement_totals_by_type.items()
+                for key, reimbursement_amount in reimbursement_totals_by_group.items()
             )
         )
         for field, amount in (
@@ -291,6 +332,7 @@ class DgcHesiNoInvoiceAdapter:
             source_checksum=source_checksum,
             reimbursement_duplicate_count=reimbursement_duplicate_count,
             invoice_duplicate_count=invoice_duplicate_count,
+            claim_level_aggregation_codes=claim_level_aggregation_codes,
         )
 
     def _parse_reimbursement(
@@ -490,7 +532,7 @@ class DgcHesiNoInvoiceAdapter:
             expense_type_code=expense_type_codes[0],
             expense_type_candidates=expense_type_codes,
             excluded_expense_type=all(
-                code in HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_CODES
+                _is_excluded_expense_type_code(code)
                 for code in expense_type_codes
             ),
             expense_line_amount=invoice.expense_line_amount,
@@ -535,28 +577,19 @@ def _deduplicate_reimbursements(
 
 def _deduplicate_invoice_sources(
     records: tuple[_DgcHesiInvoiceSourceRecord, ...],
-    *,
-    field: str,
 ) -> tuple[tuple[_DgcHesiInvoiceSourceRecord, ...], int]:
-    """Deduplicate invoices by ID and reject conflicting duplicate payloads."""
+    """Drop only exact repeated invoice allocations from overlapping pages."""
 
-    unique_by_id: dict[str, _DgcHesiInvoiceSourceRecord] = {}
+    seen: set[str] = set()
+    unique: list[_DgcHesiInvoiceSourceRecord] = []
     duplicate_count = 0
     for record in records:
-        existing = unique_by_id.get(record.invoice_id)
-        if existing is None:
-            unique_by_id[record.invoice_id] = record
+        if record.source_fingerprint in seen:
+            duplicate_count += 1
             continue
-        if existing.source_fingerprint != record.source_fingerprint:
-            raise DgcHesiNoInvoiceError(
-                "CONFLICTING_DUPLICATE_INVOICE",
-                "same invoice id was returned with conflicting payloads",
-                source="hesi_invoice",
-                row_number=record.source_row_number,
-                field=field,
-            )
-        duplicate_count += 1
-    return tuple(unique_by_id.values()), duplicate_count
+        seen.add(record.source_fingerprint)
+        unique.append(record)
+    return tuple(unique), duplicate_count
 
 
 def _record_fingerprint(raw: Mapping[str, object]) -> str:
@@ -568,6 +601,13 @@ def _record_fingerprint(raw: Mapping[str, object]) -> str:
         default=_fingerprint_default,
     ).encode("utf-8")
     return sha256(encoded).hexdigest()
+
+
+def _is_excluded_expense_type_code(code: str) -> bool:
+    return (
+        code in HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_CODES
+        or code.startswith(HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_PREFIXES)
+    )
 
 
 def _fingerprint_default(value: object) -> object:
@@ -815,9 +855,13 @@ def _combined_checksum(
 ) -> str:
     payload = json.dumps(
         {
+            "calculation_version": HESI_NO_INVOICE_CALCULATION_VERSION,
             "company_code": company_code,
             "excluded_expense_type_codes": sorted(
                 HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_CODES
+            ),
+            "excluded_expense_type_prefixes": sorted(
+                HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_PREFIXES
             ),
             "fiscal_year": fiscal_year,
             "invoice_checksum": invoice_checksum,
@@ -840,5 +884,7 @@ __all__ = [
     "DgcHesiNoInvoiceResult",
     "DgcHesiReimbursementFieldMap",
     "DgcHesiReimbursementRecord",
+    "HESI_NO_INVOICE_CALCULATION_VERSION",
     "HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_CODES",
+    "HESI_NO_INVOICE_EXCLUDED_EXPENSE_TYPE_PREFIXES",
 ]

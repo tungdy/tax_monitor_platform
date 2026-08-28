@@ -318,6 +318,7 @@ def create_app(
             max_page_bytes=resolved_settings.dgc_max_page_bytes,
             max_total_bytes=resolved_settings.dgc_max_total_bytes,
             token_ttl=resolved_settings.dgc_token_ttl_seconds,
+            strict_offset_pagination=True,
             tls_server_name=resolved_settings.dgc_tls_server_name,
             tls_pinned_certificate_sha256=(resolved_settings.dgc_tls_pinned_certificate_sha256),
         )
@@ -335,7 +336,7 @@ def create_app(
         assert resolved_settings.dgc_hesi_invoice_app_secret is not None
         hesi_invoice_client_config = DgcClientConfig(
             api_url=resolved_settings.dgc_hesi_invoice_api_url,
-            request_method="GET",
+            request_method="POST",
             app_key=resolved_settings.dgc_hesi_invoice_app_key.get_secret_value(),
             app_secret=resolved_settings.dgc_hesi_invoice_app_secret.get_secret_value(),
             timeout=resolved_settings.dgc_timeout_seconds,
@@ -345,6 +346,7 @@ def create_app(
             max_page_bytes=resolved_settings.dgc_max_page_bytes,
             max_total_bytes=resolved_settings.dgc_max_total_bytes,
             token_ttl=resolved_settings.dgc_token_ttl_seconds,
+            strict_offset_pagination=True,
             tls_server_name=resolved_settings.dgc_tls_server_name,
             tls_pinned_certificate_sha256=(resolved_settings.dgc_tls_pinned_certificate_sha256),
         )
