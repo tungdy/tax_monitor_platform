@@ -227,20 +227,20 @@ def test_app_secret_get_mode_signs_paginated_query_without_a_request_body() -> N
 
 
 @pytest.mark.parametrize("request_method", ("GET", "POST"))
-def test_hesi_app_secret_modes_fetch_every_50_row_page(request_method: str) -> None:
+def test_hesi_app_secret_modes_fetch_every_25_row_page(request_method: str) -> None:
     offsets: list[int] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request_method == "GET":
             offset = int(request.url.params["offsetValue"])
-            assert request.url.params["limitValue"] == "50"
+            assert request.url.params["limitValue"] == "25"
         else:
             body = json.loads(request.content)
             assert isinstance(body, dict)
             offset = int(body["offsetValue"])
-            assert body["limitValue"] == 50
+            assert body["limitValue"] == 25
         offsets.append(offset)
-        row_count = min(50, 250 - offset)
+        row_count = min(25, 250 - offset)
         rows = [{"id": offset + index} for index in range(row_count)]
         return httpx.Response(
             200,
@@ -276,6 +276,8 @@ def test_client_does_not_trust_an_undercounted_total_size() -> None:
     api_bodies: list[dict[str, object]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == IAM_URL:
+            return _iam_response("token")
         body = json.loads(request.content)
         assert isinstance(body, dict)
         api_bodies.append(body)
@@ -670,6 +672,13 @@ def test_client_accepts_supported_wrapped_success_shapes(
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url) == IAM_URL:
             return _iam_response("token")
+        body = json.loads(request.content)
+        assert isinstance(body, dict)
+        if body["offsetValue"] > 0:
+            return httpx.Response(
+                200,
+                json={"errCode": "DLM.0", "data": {"rowSize": 0, "data": []}},
+            )
         return httpx.Response(200, json=payload)
 
     result = DgcSapProfitClient(

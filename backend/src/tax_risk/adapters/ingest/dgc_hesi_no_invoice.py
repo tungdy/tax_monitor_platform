@@ -215,9 +215,11 @@ class DgcHesiNoInvoiceAdapter:
             record.expense_claim_code for record in included_reimbursements
         )
         reimbursements_by_claim: dict[str, list[DgcHesiReimbursementRecord]] = {}
-        for record in scoped_reimbursements:
-            if record.expense_claim_code in included_claim_codes:
-                reimbursements_by_claim.setdefault(record.expense_claim_code, []).append(record)
+        for reimbursement in scoped_reimbursements:
+            if reimbursement.expense_claim_code in included_claim_codes:
+                reimbursements_by_claim.setdefault(
+                    reimbursement.expense_claim_code, []
+                ).append(reimbursement)
         relevant_invoice_sources = tuple(
             record
             for record in invoice_sources
@@ -245,10 +247,10 @@ class DgcHesiNoInvoiceAdapter:
             if not record.excluded_expense_type
         )
         expense_types_by_claim_invoice: dict[tuple[str, str], set[str]] = {}
-        for record in scoped_invoices:
-            key = (record.expense_claim_code, record.invoice_id)
+        for invoice_record in scoped_invoices:
+            key = (invoice_record.expense_claim_code, invoice_record.invoice_id)
             expense_types_by_claim_invoice.setdefault(key, set()).add(
-                record.expense_type_id
+                invoice_record.expense_type_id
             )
         claim_level_aggregation_codes = tuple(
             sorted(
@@ -270,35 +272,35 @@ class DgcHesiNoInvoiceAdapter:
         )
         reimbursement_totals_by_group: dict[tuple[str, str | None], Decimal] = {}
         for record in included_reimbursements:
-            key = (
+            reimbursement_group = (
                 record.expense_claim_code,
                 None
                 if record.expense_claim_code in claim_level_aggregation_set
                 else record.expense_type_code,
             )
-            reimbursement_totals_by_group[key] = (
-                reimbursement_totals_by_group.get(key, Decimal(0))
+            reimbursement_totals_by_group[reimbursement_group] = (
+                reimbursement_totals_by_group.get(reimbursement_group, Decimal(0))
                 + record.expense_type_amount
             )
         invoice_totals_by_group: dict[tuple[str, str | None], Decimal] = {}
         for invoice_record in included_invoices:
-            key = (
+            invoice_group = (
                 invoice_record.expense_claim_code,
                 None
                 if invoice_record.expense_claim_code in claim_level_aggregation_set
                 else invoice_record.expense_type_code,
             )
-            invoice_totals_by_group[key] = (
-                invoice_totals_by_group.get(key, Decimal(0))
+            invoice_totals_by_group[invoice_group] = (
+                invoice_totals_by_group.get(invoice_group, Decimal(0))
                 + invoice_record.invoice_approved_amount
             )
         no_invoice_amount = _exact_sum(
             tuple(
                 max(
-                    reimbursement_amount - invoice_totals_by_group.get(key, Decimal(0)),
+                    reimbursement_amount - invoice_totals_by_group.get(group, Decimal(0)),
                     Decimal(0),
                 )
-                for key, reimbursement_amount in reimbursement_totals_by_group.items()
+                for group, reimbursement_amount in reimbursement_totals_by_group.items()
             )
         )
         for field, amount in (
@@ -562,7 +564,7 @@ def _deduplicate_reimbursements(
 ) -> tuple[tuple[DgcHesiReimbursementRecord, ...], int]:
     """Drop exact repeated reimbursement lines emitted by overlapping pages."""
 
-    seen: set[tuple[object, ...]] = set()
+    seen: set[str] = set()
     unique: list[DgcHesiReimbursementRecord] = []
     duplicate_count = 0
     for record in records:
