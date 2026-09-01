@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test-fixture";
 
 const welfareCaseId = "70000000-0000-4000-8000-000000000001";
 const donationCaseId = "70000000-0000-4000-8000-000000000002";

@@ -1,6 +1,7 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { installQuarterlyDashboardMock } from "./quarterly-dashboard.fixture";
+import { expect, test } from "./test-fixture";
 
 const FISCAL_YEAR = 2026;
 const QUARTER = 2;

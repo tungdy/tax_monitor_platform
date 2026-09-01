@@ -1,5 +1,8 @@
-import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+
+import type { MonitorResult } from "../src/features/full-validation/types";
+import { fullValidationReport } from "./full-validation.fixture";
+import { expect, test } from "./test-fixture";
 
 const entryUrl = process.env.PLAYWRIGHT_ENTRY_URL ?? ".";
 
@@ -12,23 +15,8 @@ const capabilityNames = [
   "所得税退税进度监控及入账科目准确性检查",
 ] as const;
 
-type TestValidationStatus = "ALERT" | "CLEAR" | "BLOCKED" | "NOT_APPLICABLE";
-
-interface TestMonitorResult {
-  status: TestValidationStatus;
-  outcome: string;
-}
-
 test("shows the six-capability management dashboard", async ({ page }) => {
-  const report = JSON.parse(
-    await readFile("public/real-validation-latest.json", "utf8"),
-  ) as {
-    companies: Array<{
-      monitor_results: {
-        current_tax_accrual?: { outcome: string };
-      };
-    }>;
-  };
+  const report = fullValidationReport;
   await page.goto(entryUrl);
 
   await expect(
@@ -78,10 +66,9 @@ test("shows the six-capability management dashboard", async ({ page }) => {
 
   const outcomeFilter = page.getByLabel("检查结论").first();
   await outcomeFilter.click();
-  await page
-    .locator(".ant-select-dropdown:visible")
-    .getByText(targetOutcome as string, { exact: true })
-    .click();
+  await page.locator(".ant-select-dropdown:visible .ant-select-item-option-content", {
+    hasText: targetOutcome as string,
+  }).click();
   await expect(page.getByText(`当前 ${expectedOutcomeCount} 家`)).toBeVisible();
   await outcomeFilter.click();
   await page
@@ -110,24 +97,15 @@ test("shows the six-capability management dashboard", async ({ page }) => {
 });
 
 test("cascades capability, status, and outcome filters", async ({ page }) => {
-  const report = JSON.parse(
-    await readFile("public/real-validation-latest.json", "utf8"),
-  ) as {
-    companies: Array<{
-      monitor_results: {
-        current_tax_accrual?: TestMonitorResult;
-        refund?: TestMonitorResult;
-      };
-    }>;
-  };
+  const report = fullValidationReport;
   const currentTaxAlerts = report.companies
     .map((company) => company.monitor_results.current_tax_accrual)
     .filter(
-      (result): result is TestMonitorResult => result?.status === "ALERT",
+      (result): result is MonitorResult => result?.status === "ALERT",
     );
   const refundResults = report.companies
     .map((company) => company.monitor_results.refund)
-    .filter((result): result is TestMonitorResult => result !== undefined);
+    .filter((result): result is MonitorResult => result !== undefined);
   const refundAlerts = refundResults.filter(
     (result) => result.status === "ALERT",
   );
@@ -159,10 +137,9 @@ test("cascades capability, status, and outcome filters", async ({ page }) => {
     .getByText("示警", { exact: true })
     .click();
   await outcomeFilter.click();
-  await page
-    .locator(".ant-select-dropdown:visible")
-    .getByText(currentTaxAlertOutcome as string, { exact: true })
-    .click();
+  await page.locator(".ant-select-dropdown:visible .ant-select-item-option-content", {
+    hasText: currentTaxAlertOutcome as string,
+  }).click();
 
   await page.getByLabel("监测能力").first().click();
   await page
@@ -226,21 +203,7 @@ test("cascades capability, status, and outcome filters", async ({ page }) => {
 test("shows full-company tax-adjustment account results and candidates", async ({
   page,
 }) => {
-  const report = JSON.parse(
-    await readFile("public/real-validation-latest.json", "utf8"),
-  ) as {
-    companies: Array<{
-      company_code: string;
-      monitor_results: {
-        tax_adjustment_account_accuracy?: {
-          candidates?: Array<Record<string, string>>;
-          subject_results?: {
-            welfare?: { candidates?: Array<Record<string, string>> };
-          };
-        };
-      };
-    }>;
-  };
+  const report = structuredClone(fullValidationReport);
   const candidate = report.companies.find(
     (company) => company.company_code === "3CC0",
   )?.monitor_results.tax_adjustment_account_accuracy?.subject_results?.welfare
@@ -320,13 +283,7 @@ test("shows real-source results or explicit blocks for potential tax cost", asyn
 test("shows the updated deferred-tax formula results and inputs", async ({
   page,
 }) => {
-  const report = JSON.parse(
-    await readFile("public/real-validation-latest.json", "utf8"),
-  ) as {
-    monitor_summary: {
-      deferred_tax: { ALERT: number; CLEAR: number; BLOCKED: number };
-    };
-  };
+  const report = fullValidationReport;
   const expected = report.monitor_summary.deferred_tax;
   await page.goto(entryUrl);
 
