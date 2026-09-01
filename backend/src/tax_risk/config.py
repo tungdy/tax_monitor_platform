@@ -4,6 +4,8 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+EXPECTED_MIGRATION_HEAD = "0024_align_check_constraint_names"
+
 _DGC_SAP_PROFIT_FIELD_NAMES = (
     "client",
     "company_code",
@@ -308,7 +310,7 @@ class Settings(BaseSettings):
     export_download_ttl_seconds: int = Field(default=300, gt=0, le=3_600)
     export_download_secret: str = "development-export-download-secret"
     worker_scope_secret: str = "development-worker-scope-secret-change-me"
-    expected_migration_head: str = "0023_refund_ambiguous_match_alert"
+    expected_migration_head: str = EXPECTED_MIGRATION_HEAD
 
     @model_validator(mode="after")
     def validate_browser_authentication(self) -> Self:

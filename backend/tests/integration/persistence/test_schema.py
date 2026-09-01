@@ -87,7 +87,7 @@ def test_persistence_engine_uses_marker_owned_random_pytest_schema(engine: Engin
 
     assert PYTEST_SCHEMA_PATTERN.fullmatch(schema_name), schema_name
     assert schema_marker == PYTEST_SCHEMA_MARKER
-    assert revision == "0023_refund_ambiguous_match_alert"
+    assert revision == "0024_align_check_constraint_names"
     version_column = _column(engine, "alembic_version", "version_num")
     assert version_column["type"].length == 64
 
@@ -955,7 +955,7 @@ def test_alembic_current_accepts_a_percent_encoded_database_url(
     completed = _run_alembic(encoded_url, "current")
 
     assert completed.returncode == 0, completed.stderr
-    assert "0023_refund_ambiguous_match_alert (head)" in completed.stdout
+    assert "0024_align_check_constraint_names (head)" in completed.stdout
 
 
 def test_alembic_check_and_round_trip_stay_in_the_isolated_schema() -> None:
@@ -980,7 +980,7 @@ def test_database_is_at_current_schema_revision(engine: Engine) -> None:
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert revision == "0023_refund_ambiguous_match_alert"
+    assert revision == "0024_align_check_constraint_names"
 
 
 def test_0022_accepts_taxes_payable_evidence_and_blocks_unsafe_downgrade() -> None:
@@ -1049,7 +1049,7 @@ def test_0022_accepts_taxes_payable_evidence_and_blocks_unsafe_downgrade() -> No
                 text("SELECT id FROM sap_gl_line_observation WHERE id = :id"),
                 {"id": taxes_payable_line_id},
             ).scalar_one()
-        assert revision == "0023_refund_ambiguous_match_alert"
+        assert revision == "0024_align_check_constraint_names"
         assert retained_line == taxes_payable_line_id
 
 
@@ -1240,7 +1240,7 @@ def test_0019_downgrade_refuses_a_referenced_v2_rule() -> None:
                 text("SELECT id FROM monitoring_run WHERE id = :run_id"),
                 {"run_id": run_id},
             ).scalar_one()
-        assert revision == "0023_refund_ambiguous_match_alert"
+        assert revision == "0024_align_check_constraint_names"
         assert retained_run == run_id
         assert "deferred_tax_rate" in {
             column["name"] for column in inspect(isolated_engine).get_columns("tax_master_version")

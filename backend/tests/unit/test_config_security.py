@@ -308,7 +308,7 @@ def test_dgc_sap_profit_defaults_are_disabled_and_safe() -> None:
     assert settings.dgc_invoice_detail_app_key is None
     assert settings.dgc_invoice_detail_app_secret is None
     assert settings.dgc_invoice_detail_page_size == 15_000
-    assert settings.expected_migration_head == "0023_refund_ambiguous_match_alert"
+    assert settings.expected_migration_head == "0024_align_check_constraint_names"
 
 
 def test_lark_refund_writeback_defaults_are_disabled_and_safe() -> None:

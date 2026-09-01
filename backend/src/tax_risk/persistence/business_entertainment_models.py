@@ -113,7 +113,7 @@ class BusinessEntertainmentSourceObservation(UUIDPrimaryKeyMixin, AuditTimestamp
         CheckConstraint(
             "(amount IS NULL AND currency IS NULL) OR "
             "(amount IS NOT NULL AND currency IS NOT NULL)",
-            name="amount_currency_pair",
+            name="amount_currency",
         ),
         Index("ix_be_source_obs_batch", "ingest_batch_id"),
         Index("ix_be_source_obs_company", "company_code"),

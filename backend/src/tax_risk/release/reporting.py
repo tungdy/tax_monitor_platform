@@ -14,6 +14,7 @@ from uuid import UUID
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from tax_risk.config import EXPECTED_MIGRATION_HEAD
 from tax_risk.persistence.models import ReleaseEvent, ReleaseManifestRecord
 from tax_risk.persistence.repositories import UnitOfWork
 from tax_risk.release.manifest import ReleaseArtifacts, ReleaseManifest
@@ -293,7 +294,7 @@ def write_ci_release_evidence(output_dir: Path, repository_root: Path) -> None:
             f"sha256:{sha256(b'tax-risk-phase-4-local-image').hexdigest()}",
         ),
         git_commit=_git_commit(repository_root),
-        migration_head="0023_refund_ambiguous_match_alert",
+        migration_head=EXPECTED_MIGRATION_HEAD,
         artifacts=ReleaseArtifacts(
             rule_package_sha256=_hash_paths(
                 repository_root,

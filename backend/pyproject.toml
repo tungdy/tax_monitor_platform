@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Group income tax risk monitoring platform"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "alembic>=1.14,<2",
+    "alembic==1.19.1",
     "celery>=5.4,<6",
     "cryptography>=46,<49",
     "fastapi>=0.115,<1",
@@ -18,7 +18,7 @@ dependencies = [
     "pydantic-settings>=2.7,<3",
     "python-multipart>=0.0.20,<1",
     "redis>=5,<7",
-    "sqlalchemy>=2.0,<3",
+    "sqlalchemy==2.0.52",
     "uvicorn>=0.34,<1",
 ]
 

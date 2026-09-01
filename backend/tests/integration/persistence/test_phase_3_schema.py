@@ -28,7 +28,7 @@ def test_phase_3_extends_the_existing_control_plane(engine: Engine) -> None:
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert revision == "0023_refund_ambiguous_match_alert"
+    assert revision == "0024_align_check_constraint_names"
     assert "semantic_version_set" in inspector.get_table_names()
     assert {
         "WELFARE",
