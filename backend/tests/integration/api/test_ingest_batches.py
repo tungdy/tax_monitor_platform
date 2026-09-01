@@ -419,8 +419,9 @@ class _AuditFailureUowFactory:
 
     def __call__(self) -> object:
         self._calls += 1
-        # The stage-4 HTTP audit writes the create-batch event before the upload.
-        if self._calls == 4:
+        # Batch creation and its HTTP audit run before the upload. The upload
+        # then resolves the batch and enters its processing transaction.
+        if self._calls == 5:
             return _FailOnEnterUow()
         return UnitOfWork(self._factory)  # type: ignore[arg-type]
 

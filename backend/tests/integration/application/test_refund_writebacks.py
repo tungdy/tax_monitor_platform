@@ -81,7 +81,7 @@ def test_live_database_rejects_invalid_writeback_delivery_states(
     processed_at_sql: str,
 ) -> None:
     engine, _factory = create_session_factory(isolated_database_url)
-    company_id, target_id = _seed_target(engine, "STATE")
+    company_id, target_id = _seed_target(engine, f"STATE-{uuid4().hex}")
     statement = text(
         "INSERT INTO income_tax_refund_writeback ("
         "id, target_id, company_id, idempotency_key, desired_value, status, "

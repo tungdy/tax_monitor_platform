@@ -47,12 +47,12 @@ async def get_principal(
         AuthenticationService | None,
         getattr(request.app.state, "authentication_service", None),
     )
-    settings = cast(Settings, request.app.state.settings)
+    settings = cast(Settings | None, getattr(request.app.state, "settings", None))
     identity = (
         authentication_service.authenticate_session(
             request.cookies.get(settings.auth_session_cookie_name)
         )
-        if authentication_service is not None
+        if authentication_service is not None and settings is not None
         else None
     )
     provider = cast(PrincipalProvider | None, request.app.state.principal_provider)
@@ -62,6 +62,8 @@ async def get_principal(
     elif provider is not None:
         principal = provider(request)
     else:
+        if settings is None:
+            _unauthenticated()
         if (
             settings.environment != "development"
             or not settings.development_principal_enabled

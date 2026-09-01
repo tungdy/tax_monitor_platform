@@ -1513,6 +1513,12 @@ def test_0004_downgrade_preserves_same_key_row_without_its_provenance() -> None:
     with _owned_migration_schema() as (database_url, isolated_engine):
         upgrade_0004 = _run_alembic(database_url, "upgrade", "head")
         assert upgrade_0004.returncode == 0, upgrade_0004.stderr
+        downgrade_0017 = _run_alembic(
+            database_url,
+            "downgrade",
+            "0017_strict_rls_runtime",
+        )
+        assert downgrade_0017.returncode == 0, downgrade_0017.stderr
         preexisting_definition = {"owner": "preexisting-after-upgrade"}
         with isolated_engine.begin() as connection:
             fixed_rule_id = connection.execute(

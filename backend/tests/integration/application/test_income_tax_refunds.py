@@ -260,12 +260,14 @@ def test_scan_classifies_all_outcomes_stops_received_and_enqueues_writebacks_and
             scan_year=SCAN_YEAR,
             scan_month=3,
             source_batch_key=march_batch.source_batch_key,
+            allowed_company_ids=frozenset(value[1] for value in seeded.values()),
         )
         replay = service.scan(
             refund_tax_year=REFUND_TAX_YEAR,
             scan_year=SCAN_YEAR,
             scan_month=3,
             source_batch_key=march_batch.source_batch_key,
+            allowed_company_ids=frozenset(value[1] for value in seeded.values()),
         )
 
         assert (
@@ -291,6 +293,7 @@ def test_scan_classifies_all_outcomes_stops_received_and_enqueues_writebacks_and
             scan_year=SCAN_YEAR,
             scan_month=4,
             source_batch_key=april_batch.source_batch_key,
+            allowed_company_ids=frozenset(value[1] for value in seeded.values()),
         )
         assert (
             april.received_count,
@@ -376,7 +379,7 @@ def test_scan_uses_only_the_requested_complete_sap_batch(
     isolated_database_url: str,
 ) -> None:
     service, engine = _service(isolated_database_url)
-    company_code, _ = _seed_company(engine, "BATCH-SCOPE")
+    company_code, company_id = _seed_company(engine, "BATCH-SCOPE")
     old_batch = _evidence(
         "refund-old-snapshot",
         (company_code,),
@@ -401,6 +404,7 @@ def test_scan_uses_only_the_requested_complete_sap_batch(
             scan_year=SCAN_YEAR,
             scan_month=3,
             source_batch_key=current_batch.source_batch_key,
+            allowed_company_ids=frozenset({company_id}),
         )
 
         assert result.received_count == 0
@@ -470,6 +474,7 @@ def test_scan_uses_taxes_payable_only_after_primary_accounts_do_not_match(
             scan_year=SCAN_YEAR,
             scan_month=3,
             source_batch_key=batch.source_batch_key,
+            allowed_company_ids=frozenset({primary_id, fallback_id}),
         )
 
         assert (result.received_count, result.wrong_account_count) == (2, 2)
@@ -529,6 +534,7 @@ def test_manual_feishu_received_status_stops_future_scans_without_writeback(
             scan_year=SCAN_YEAR,
             scan_month=3,
             source_batch_key=march_batch.source_batch_key,
+            allowed_company_ids=frozenset({company_id}),
         )
         assert march.not_received_count == 1
 
@@ -543,6 +549,7 @@ def test_manual_feishu_received_status_stops_future_scans_without_writeback(
             scan_year=SCAN_YEAR,
             scan_month=4,
             source_batch_key=april_batch.source_batch_key,
+            allowed_company_ids=frozenset({company_id}),
         )
 
         assert (imported.accepted_count, imported.replayed_count) == (1, 0)
@@ -626,6 +633,7 @@ def test_scan_rolls_back_every_company_when_evaluation_fails_mid_transaction(
                 scan_year=SCAN_YEAR,
                 scan_month=3,
                 source_batch_key=batch.source_batch_key,
+                allowed_company_ids=frozenset({first_id, second_id}),
             )
 
         with engine.connect() as connection:
@@ -679,6 +687,7 @@ def test_concurrent_same_month_replay_creates_one_result_case_and_writeback(
             scan_year=SCAN_YEAR,
             scan_month=3,
             source_batch_key=batch.source_batch_key,
+            allowed_company_ids=frozenset({company_id}),
         )
         return result.received_count, result.wrong_account_count
 

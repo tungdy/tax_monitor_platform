@@ -200,7 +200,7 @@ def test_105_company_batch_isolates_failures_and_retries_failed_only(
     assert _snapshot_source_counts(engine, seed.snapshot_ids) == {
         "snapshot_sources": 105,
         "sap_batches": 105,
-        "source_records": 840,
+        "source_records": 945,
     }
 
     # If the process dies after the database commit but before broker publish,

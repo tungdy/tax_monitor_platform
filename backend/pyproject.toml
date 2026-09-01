@@ -28,7 +28,7 @@ dev = [
     "mypy>=1.14,<2",
     "pytest>=8.3,<9",
     "pytest-cov>=6,<7",
-    "ruff>=0.9,<1",
+    "ruff==0.15.21",
 ]
 
 [tool.setuptools.packages.find]
@@ -36,7 +36,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-markers"
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 testpaths = ["tests"]
 markers = [
     "real_redis_worker: starts an independent Celery worker against real Redis",

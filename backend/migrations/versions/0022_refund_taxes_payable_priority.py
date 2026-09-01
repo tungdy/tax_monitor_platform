@@ -23,12 +23,12 @@ CONSTRAINT_NAME = "ck_sap_gl_line_observation_account_category"
 
 def upgrade() -> None:
     op.drop_constraint(
-        CONSTRAINT_NAME,
+        op.f(CONSTRAINT_NAME),
         "sap_gl_line_observation",
         type_="check",
     )
     op.create_check_constraint(
-        CONSTRAINT_NAME,
+        op.f(CONSTRAINT_NAME),
         "sap_gl_line_observation",
         "account_category IN ('INCOME_TAX_EXPENSE', 'OTHER_INCOME', 'TAXES_PAYABLE')",
     )
@@ -49,12 +49,12 @@ def downgrade() -> None:
             f"({taxes_payable_line})"
         )
     op.drop_constraint(
-        CONSTRAINT_NAME,
+        op.f(CONSTRAINT_NAME),
         "sap_gl_line_observation",
         type_="check",
     )
     op.create_check_constraint(
-        CONSTRAINT_NAME,
+        op.f(CONSTRAINT_NAME),
         "sap_gl_line_observation",
         "account_category IN ('INCOME_TAX_EXPENSE', 'OTHER_INCOME')",
     )
